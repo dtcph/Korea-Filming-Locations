@@ -33,16 +33,17 @@
     </style>
   </head>
   <body>
-    <h1>안녕하세요~</h1>
+    <h1 id="h1">안녕하세요~</h1>
     <p>혹시 몰라서 인트로 문장을 준비해 놓았음.</p>
-    <section>저 폴이라고요~</section>
+    <section>이 웹사이트가 이쁘죠~^^</section>
   </body>
   <script>
     let hue = 0;
 
     setInterval(() => {
       document.body.style.backgroundColor = `hsl(${hue}, 100%, 50%)`;
+      document.getElementById("h1").style.color = `hsl(${hue * -1}, 100%, 50%)`;
       hue = (hue + 3) % 360;
-    }, 50);
+    }, 100);
   </script>
 </html>
