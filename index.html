@@ -38,15 +38,11 @@
     <section>저 폴이라고요~</section>
   </body>
   <script>
-    var bodyStyle = document.body.style;
-    var r = 0;
-    var g = 0;
-    var b = 0;
+    let hue = 0;
 
-    for (let i = 0; i < 255; i++) {
-      for (let i = 0; i < 255; i++) {
-        for (let i = 0; i < 255; i++) {
-          r++;
-    }
+    setInterval(() => {
+      document.body.style.backgroundColor = `hsl(${hue}, 100%, 50%)`;
+      hue = (hue + 3) % 360;
+    }, 20);
   </script>
 </html>
