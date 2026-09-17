@@ -1,93 +1,74 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>First Page</title>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FRAME — Korea Filming Locations</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">FRAME</span>
+      <span class="brand-sub">Korea Filming Location Explorer</span>
+    </div>
+    <div class="filters" role="group" aria-label="Filters">
+      <div class="filter-group">
+        <span class="filter-label">Type</span>
+        <div class="chip-row" id="type-filters"></div>
+      </div>
+      <div class="filter-group search-group">
+        <span class="filter-label" for="search-input">Search</span>
+        <input id="search-input" type="text" placeholder="Search title…" autocomplete="off" />
+      </div>
+      <button id="reset-view" class="back-btn" title="Back to national view (Esc)" disabled>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2 3 7l5.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        National view
+      </button>
+    </div>
+  </header>
 
-    <style>
-      body {
-        box-sizing: border-box;
+  <main class="layout">
+    <section class="map-pane">
+      <div class="map-head">
+        <h1 id="map-title">South Korea — filming location density</h1>
+        <p id="map-sub" class="muted">Hover a province to preview, click to zoom in and see individual locations.</p>
+      </div>
+      <div class="map-wrap" id="map-wrap">
+        <svg id="map-svg" role="img" aria-label="Map of South Korea filming locations"></svg>
+        <div class="legend" id="legend"></div>
+        <div class="tooltip" id="tooltip" hidden></div>
+      </div>
+      <p class="unlocated-note" id="unlocated-note"></p>
+    </section>
 
-        width: 100vw;
-        height: 100vh;
+    <aside class="stats-pane" id="stats-pane">
+      <div class="stats-head">
+        <h2 id="stats-title">All of South Korea</h2>
+        <p class="muted" id="stats-sub"></p>
+      </div>
 
-        padding: 4rem;
+      <div class="stat-tiles" id="stat-tiles"></div>
 
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
+      <div class="stats-block">
+        <h3>By type</h3>
+        <div id="type-breakdown" class="bar-list"></div>
+      </div>
 
-        background-color: rgb(12, 14, 16);
-        color: rgb(245, 240, 240);
+      <div class="stats-block" id="detail-block" hidden>
+        <h3 id="detail-title">Location</h3>
+        <dl class="detail-list" id="detail-list"></dl>
+      </div>
 
-        font-size: 4rem;
-        font-family: Chalkboard, Arial, Helvetica, sans-serif;
-        font-weight: 700;
-      }
+      <div class="stats-block">
+        <h3 id="list-heading">Top locations</h3>
+        <ul class="record-list" id="record-list"></ul>
+      </div>
+    </aside>
+  </main>
 
-      p {
-        max-width: 40%;
-      }
-    </style>
-  </head>
-  <body>
-    <h1 id="h1" class="word">&nbsp;&nbsp;</h1>
-    <script>
-      var words = ["Hi, I am Paul.", "Hello World", "안녕하세요~"],
-        part,
-        i = 0,
-        offset = 0,
-        len = words.length,
-        forwards = true,
-        skip_count = 0,
-        skip_delay = 30,
-        speed = 70;
-      var wordflick = function () {
-        setInterval(function () {
-          if (forwards) {
-            if (offset >= words[i].length) {
-              ++skip_count;
-              if (skip_count == skip_delay) {
-                forwards = false;
-                skip_count = 0;
-              }
-            }
-          } else {
-            if (offset == 0) {
-              forwards = true;
-              i++;
-              offset = 0;
-              if (i >= len) {
-                i = 0;
-              }
-            }
-          }
-          part = words[i].substr(0, offset);
-          if (skip_count == 0) {
-            if (forwards) {
-              offset++;
-            } else {
-              offset--;
-            }
-          }
-          document.querySelector(".word").textContent = part;
-        }, speed);
-      };
-
-      wordflick();
-    </script>
-    <p>혹시 몰라서 인트로 문장을 준비해 놓았음.</p>
-    <section>이 웹사이트가 이쁘죠~^^</section>
-  </body>
-  <script>
-    let hue = 0;
-
-    setInterval(() => {
-      document.body.style.backgroundColor = `hsl(${hue}, 100%, 50%)`;
-      document.getElementById("h1").style.color = `hsl(${hue * -1}, 100%, 50%)`;
-      hue = (hue + 3) % 360;
-    }, 100);
-  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="app.js"></script>
+</body>
 </html>
