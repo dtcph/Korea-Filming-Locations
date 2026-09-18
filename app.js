@@ -2,16 +2,116 @@
   "use strict";
 
   const TYPES = [
-    { key: "Film", label: "Film", varName: "--type-film" },
-    { key: "TV Drama", label: "TV Drama", varName: "--type-drama" },
-    { key: "Studio & Theme Park", label: "Studio & Theme Park", varName: "--type-studio" },
+    { key: "Film", varName: "--type-film" },
+    { key: "TV Drama", varName: "--type-drama" },
+    { key: "Studio & Theme Park", varName: "--type-studio" },
   ];
 
+  // Language names are shown in their own script and are never translated
+  // (a language picker doesn't localize its own labels).
   const LANGUAGES = [
-    { key: "all", label: "All" },
-    { key: "en", label: "English" },
     { key: "kr", label: "한국어" },
+    { key: "en", label: "English" },
   ];
+
+  const I18N = {
+    en: {
+      brandSub: "Korea Filming Location Explorer",
+      pageTitle: "FRAME — Korea Filming Locations",
+      typeLabel: "Type",
+      languageLabel: "Language",
+      searchLabel: "Search",
+      searchPlaceholder: "Search title…",
+      backLabel: "National view",
+      backTitle: "Back to national view (Esc)",
+      mapTitleDefault: "South Korea — filming location density",
+      mapSubDefault:
+        "Hover a province to preview, click to zoom in and see individual locations.",
+      mapSubRegion:
+        "Hover a dot to preview, click to see full details on the right. Press Esc or use National view to zoom back out.",
+      legendDensity: "Location density",
+      legendLow: "Low",
+      legendHigh: "High",
+      legendType: "Type",
+      typeNames: {
+        Film: "Film",
+        "TV Drama": "TV Drama",
+        "Studio & Theme Park": "Studio & Theme Park",
+      },
+      byType: "By type",
+      statMatching: "Matching records",
+      statMapped: "Mapped locations",
+      statProvinces: "Provinces",
+      statMunicipalities: "Municipalities",
+      statDistinct: "Distinct titles",
+      statsAllTitle: "All of South Korea",
+      statsAllSub: (n, mapped) =>
+        `${n} matching record${n === 1 ? "" : "s"} · ${mapped} mapped`,
+      statsRegionSub: (n) =>
+        `${n} matching record${n === 1 ? "" : "s"} in this province`,
+      provincesByCount: "Provinces by count",
+      locationsIn: (name) => `Locations in ${name}`,
+      unlocatedNote: (n) =>
+        `${n} matching record${n === 1 ? "" : "s"} have no recorded location and are not shown on the map.`,
+      tooltipCount: (n) => `${n} filming location${n === 1 ? "" : "s"}`,
+      detailTitleLabel: "Title",
+      detailType: "Type",
+      detailProvince: "Province",
+      detailCity: "City/County",
+      detailNeighborhood: "Neighborhood",
+      detailRecordId: "Record ID",
+      dash: "—",
+    },
+    kr: {
+      brandSub: "한국 촬영지 탐색기",
+      pageTitle: "FRAME — 한국 촬영지 탐색기",
+      typeLabel: "유형",
+      languageLabel: "언어",
+      searchLabel: "검색",
+      searchPlaceholder: "제목 검색…",
+      backLabel: "전국 보기",
+      backTitle: "전국 보기로 돌아가기 (Esc)",
+      mapTitleDefault: "대한민국 — 촬영지 밀도",
+      mapSubDefault:
+        "지역에 마우스를 올려 미리보고, 클릭하면 확대되어 개별 촬영지를 볼 수 있습니다.",
+      mapSubRegion:
+        "점에 마우스를 올리면 미리보기가, 클릭하면 오른쪽에 상세 정보가 표시됩니다. Esc 또는 전국 보기로 돌아갈 수 있습니다.",
+      legendDensity: "위치 밀도",
+      legendLow: "낮음",
+      legendHigh: "높음",
+      legendType: "유형",
+      typeNames: {
+        Film: "영화",
+        "TV Drama": "TV 드라마",
+        "Studio & Theme Park": "스튜디오 · 테마파크",
+      },
+      byType: "유형별",
+      statMatching: "일치하는 기록",
+      statMapped: "지도에 표시된 위치",
+      statProvinces: "시·도 수",
+      statMunicipalities: "시·군·구 수",
+      statDistinct: "고유 타이틀 수",
+      statsAllTitle: "대한민국 전체",
+      statsAllSub: (n, mapped) => `${n}건 일치 · ${mapped}건 지도 표시`,
+      statsRegionSub: (n) => `이 지역에서 ${n}건 일치`,
+      provincesByCount: "건수별 지역",
+      locationsIn: (name) => `${name} 내 촬영지`,
+      unlocatedNote: (n) =>
+        `${n}건은 위치 정보가 없어 지도에 표시되지 않습니다.`,
+      tooltipCount: (n) => `촬영지 ${n}곳`,
+      detailTitleLabel: "제목",
+      detailType: "유형",
+      detailProvince: "시·도",
+      detailCity: "시·군·구",
+      detailNeighborhood: "읍·면·동",
+      detailRecordId: "기록 ID",
+      dash: "—",
+    },
+  };
+
+  function t() {
+    return I18N[state.language];
+  }
 
   const state = {
     records: [],
@@ -20,7 +120,7 @@
     provinceByCode: new Map(),
     recordsByProvince: new Map(),
     activeTypes: new Set(TYPES.map((t) => t.key)),
-    language: "all",
+    language: "kr",
     search: "",
     selectedProvinceCode: null,
     selectedRecordId: null,
@@ -40,6 +140,12 @@
     languageFilters: document.getElementById("language-filters"),
     searchInput: document.getElementById("search-input"),
     resetView: document.getElementById("reset-view"),
+    resetViewLabel: document.getElementById("reset-view-label"),
+    brandSub: document.getElementById("brand-sub"),
+    labelType: document.getElementById("label-type"),
+    labelLanguage: document.getElementById("label-language"),
+    labelSearch: document.getElementById("label-search"),
+    typeBreakdownHeading: document.getElementById("type-breakdown-heading"),
     unlocatedNote: document.getElementById("unlocated-note"),
     statsTitle: document.getElementById("stats-title"),
     statsSub: document.getElementById("stats-sub"),
@@ -54,43 +160,56 @@
 
   function typeColor(key) {
     return getComputedStyle(document.documentElement)
-      .getPropertyValue(TYPES.find((t) => t.key === key)?.varName || "--type-film")
+      .getPropertyValue(
+        TYPES.find((t) => t.key === key)?.varName || "--type-film",
+      )
       .trim();
   }
 
   function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
   }
 
   // ---------- language-aware display ----------
 
   // The English and Korean source files describe the exact same 286
   // locations (identical ids, identical geo fields) - they're two labelings
-  // of one dataset, not two different sets of places. The language filter
-  // therefore controls which title/location text is shown and searched,
-  // rather than hiding any dots.
+  // of one dataset, not two different sets of places. The language toggle is
+  // exclusive (OR, not blended): whichever language is active is the only
+  // one shown or searched, everywhere in the UI.
+
+  function isKr() {
+    return state.language === "kr";
+  }
 
   function displayName(r) {
-    if (state.language === "en") return r.nameEn || r.nameKr || "";
-    if (state.language === "kr") return r.nameKr || r.nameEn || "";
-    return [r.nameEn, r.nameKr].filter(Boolean).join(" · ");
+    return isKr() ? r.nameKr || r.nameEn || "" : r.nameEn || r.nameKr || "";
   }
 
   function displayMuniName(r) {
-    if (state.language === "kr") return r.muniNameKr || r.muniName || null;
-    if (state.language === "en") return r.muniName || r.muniNameKr || null;
-    return r.muniName || r.muniNameKr || null;
+    return isKr()
+      ? r.muniNameKr || r.muniName || null
+      : r.muniName || r.muniNameKr || null;
   }
 
   function displayNeighborhood(r) {
-    if (state.language === "kr") return r.neighborhoodKr || r.neighborhood || null;
-    return r.neighborhood || r.neighborhoodKr || null;
+    return isKr()
+      ? r.neighborhoodKr || r.neighborhood || null
+      : r.neighborhood || r.neighborhoodKr || null;
+  }
+
+  function displayProvince(r) {
+    return isKr()
+      ? r.provinceKr || r.province || null
+      : r.province || r.provinceKr || null;
   }
 
   function searchableText(r) {
-    if (state.language === "en") return [r.nameEn].filter(Boolean);
-    if (state.language === "kr") return [r.nameKr, r.searchKr].filter(Boolean);
-    return [r.nameEn, r.nameKr, r.searchKr].filter(Boolean);
+    return isKr()
+      ? [r.nameKr, r.searchKr].filter(Boolean)
+      : [r.nameEn].filter(Boolean);
   }
 
   // ---------- filtering ----------
@@ -110,6 +229,8 @@
 
   // ---------- boot ----------
 
+  applyStaticI18N();
+
   Promise.all([
     d3.json("geo/provinces-topo.json"),
     d3.json("geo/municipalities-topo.json"),
@@ -118,16 +239,24 @@
     const provinceObj = provinceTopo.objects.skorea_provinces_2018_geo;
     const muniObj = muniTopo.objects.skorea_municipalities_2018_geo;
 
-    state.provinceFeatures = topojson.feature(provinceTopo, provinceObj).features;
-    state.provinceFeatures.forEach((f) => state.provinceByCode.set(f.properties.code, f));
+    state.provinceFeatures = topojson.feature(
+      provinceTopo,
+      provinceObj,
+    ).features;
+    state.provinceFeatures.forEach((f) =>
+      state.provinceByCode.set(f.properties.code, f),
+    );
 
     const muniFeatures = topojson.feature(muniTopo, muniObj).features;
-    muniFeatures.forEach((f) => state.muniFeatureByCode.set(f.properties.code, f));
+    muniFeatures.forEach((f) =>
+      state.muniFeatureByCode.set(f.properties.code, f),
+    );
 
     state.records = records;
     state.records.forEach((r) => {
       if (!r.provinceCode) return;
-      if (!state.recordsByProvince.has(r.provinceCode)) state.recordsByProvince.set(r.provinceCode, []);
+      if (!state.recordsByProvince.has(r.provinceCode))
+        state.recordsByProvince.set(r.provinceCode, []);
       state.recordsByProvince.get(r.provinceCode).push(r);
     });
 
@@ -135,12 +264,30 @@
     buildLanguageFilters();
     buildLegend();
     initMap();
+    renderMapHeading();
     renderStats();
 
-    window.addEventListener("resize", debounce(() => {
-      initMap(true);
-    }, 200));
+    window.addEventListener(
+      "resize",
+      debounce(() => {
+        initMap(true);
+      }, 200),
+    );
   });
+
+  function applyStaticI18N() {
+    const s = t();
+    document.title = s.pageTitle;
+    document.documentElement.lang = state.language === "kr" ? "ko" : "en";
+    els.brandSub.textContent = s.brandSub;
+    els.labelType.textContent = s.typeLabel;
+    els.labelLanguage.textContent = s.languageLabel;
+    els.labelSearch.textContent = s.searchLabel;
+    els.searchInput.placeholder = s.searchPlaceholder;
+    els.resetViewLabel.textContent = s.backLabel;
+    els.resetView.title = s.backTitle;
+    els.typeBreakdownHeading.textContent = s.byType;
+  }
 
   function debounce(fn, ms) {
     let t;
@@ -154,30 +301,30 @@
 
   function buildTypeFilters() {
     els.typeFilters.innerHTML = "";
-    TYPES.forEach((t) => {
+    TYPES.forEach((ty) => {
       const chip = document.createElement("button");
       chip.className = "chip active";
       chip.type = "button";
-      chip.style.setProperty("--chip-color", cssVar(t.varName));
-      chip.style.background = cssVar(t.varName);
+      chip.style.setProperty("--chip-color", cssVar(ty.varName));
+      chip.style.background = cssVar(ty.varName);
       chip.style.color = "#fff";
       chip.style.borderColor = "transparent";
       const dot = document.createElement("span");
       dot.className = "dot";
       const label = document.createElement("span");
-      label.textContent = t.label;
+      label.textContent = t().typeNames[ty.key];
       chip.append(dot, label);
       chip.addEventListener("click", () => {
-        if (state.activeTypes.has(t.key)) {
-          state.activeTypes.delete(t.key);
+        if (state.activeTypes.has(ty.key)) {
+          state.activeTypes.delete(ty.key);
           chip.classList.remove("active");
           chip.style.background = "transparent";
           chip.style.color = "";
           chip.style.borderColor = "";
         } else {
-          state.activeTypes.add(t.key);
+          state.activeTypes.add(ty.key);
           chip.classList.add("active");
-          chip.style.background = cssVar(t.varName);
+          chip.style.background = cssVar(ty.varName);
           chip.style.color = "#fff";
           chip.style.borderColor = "transparent";
         }
@@ -220,29 +367,33 @@
   }
 
   function onLanguageChange() {
+    applyStaticI18N();
+    buildTypeFilters();
+    buildLegend();
     onFilterChange();
     renderMapHeading();
   }
 
   function buildLegend() {
+    const s = t();
     els.legend.innerHTML = "";
     const seq = document.createElement("div");
     seq.innerHTML = `
-      <div class="legend-title">Location density</div>
+      <div class="legend-title">${escapeHtml(s.legendDensity)}</div>
       <div class="legend-scale">
-        <span class="muted" style="font-size:10.5px">Low</span>
+        <span class="muted" style="font-size:10.5px">${escapeHtml(s.legendLow)}</span>
         <span class="legend-ramp"></span>
-        <span class="muted" style="font-size:10.5px">High</span>
+        <span class="muted" style="font-size:10.5px">${escapeHtml(s.legendHigh)}</span>
       </div>
     `;
     els.legend.appendChild(seq);
 
     const typeWrap = document.createElement("div");
-    typeWrap.innerHTML = `<div class="legend-title" style="margin-top:2px">Type</div>`;
-    TYPES.forEach((t) => {
+    typeWrap.innerHTML = `<div class="legend-title" style="margin-top:2px">${escapeHtml(s.legendType)}</div>`;
+    TYPES.forEach((ty) => {
       const row = document.createElement("div");
       row.className = "legend-row";
-      row.innerHTML = `<span class="dot" style="background:${cssVar(t.varName)}"></span><span>${t.label}</span>`;
+      row.innerHTML = `<span class="dot" style="background:${cssVar(ty.varName)}"></span><span>${escapeHtml(s.typeNames[ty.key])}</span>`;
       typeWrap.appendChild(row);
     });
     els.legend.appendChild(typeWrap);
@@ -267,8 +418,11 @@
     els.svg.innerHTML = "";
 
     state.projection = d3.geoMercator().fitExtent(
-      [[16, 16], [width - 16, height - 16]],
-      { type: "FeatureCollection", features: state.provinceFeatures }
+      [
+        [16, 16],
+        [width - 16, height - 16],
+      ],
+      { type: "FeatureCollection", features: state.provinceFeatures },
     );
     state.path = d3.geoPath(state.projection);
 
@@ -308,16 +462,16 @@
   }
 
   function provinceLabel(feature) {
-    if (state.language === "kr") return feature.properties.name;
-    if (state.language === "en") return feature.properties.name_eng;
-    return `${feature.properties.name_eng} · ${feature.properties.name}`;
+    return isKr() ? feature.properties.name : feature.properties.name_eng;
   }
 
   function provinceTooltipHTML(feature) {
     const code = feature.properties.code;
-    const count = (state.recordsByProvince.get(code) || []).filter(passesFilter).length;
+    const count = (state.recordsByProvince.get(code) || []).filter(
+      passesFilter,
+    ).length;
     return `<div class="tt-title">${escapeHtml(provinceLabel(feature))}</div>
-      <div class="tt-value"><span class="tt-strong">${count}</span> filming location${count === 1 ? "" : "s"}</div>`;
+      <div class="tt-value tt-strong">${escapeHtml(t().tooltipCount(count))}</div>`;
   }
 
   function countByProvince() {
@@ -333,7 +487,11 @@
   function updateChoropleth() {
     const counts = countByProvince();
     const max = d3.max(Array.from(counts.values())) || 1;
-    const scale = d3.scaleLinear().domain([0, max]).range([cssVar("--seq-100"), cssVar("--seq-700")]).interpolate(d3.interpolateRgb);
+    const scale = d3
+      .scaleLinear()
+      .domain([0, max])
+      .range([cssVar("--seq-100"), cssVar("--seq-700")])
+      .interpolate(d3.interpolateRgb);
 
     provinceLayer.selectAll("path.province-path").attr("fill", (d) => {
       const c = counts.get(d.properties.code) || 0;
@@ -368,7 +526,10 @@
         } else {
           const radius = 5 + 3.2 * Math.sqrt(i);
           const angle = i * 137.508 * (Math.PI / 180);
-          offsets.set(r.id, [radius * Math.cos(angle), radius * Math.sin(angle)]);
+          offsets.set(r.id, [
+            radius * Math.cos(angle),
+            radius * Math.sin(angle),
+          ]);
         }
       });
     });
@@ -424,9 +585,11 @@
   }
 
   function dotTooltipHTML(r) {
-    const loc = [displayMuniName(r), displayNeighborhood(r)].filter(Boolean).join(", ");
+    const loc = [displayMuniName(r), displayNeighborhood(r)]
+      .filter(Boolean)
+      .join(", ");
     return `<div class="tt-title">${escapeHtml(displayName(r))}</div>
-      <div class="tt-value">${escapeHtml(r.type)} · <span class="tt-strong">${escapeHtml(loc)}</span></div>`;
+      <div class="tt-value">${escapeHtml(t().typeNames[r.type] || r.type)} · <span class="tt-strong">${escapeHtml(loc)}</span></div>`;
   }
 
   function updateDotsVisibility() {
@@ -442,20 +605,29 @@
 
   function rescaleDots() {
     dotLayer.selectAll("g.dot-mark circle.core").attr("r", (d) => {
-      const base = d.id === state.selectedRecordId ? SELECTED_DOT_R : BASE_DOT_R;
+      const base =
+        d.id === state.selectedRecordId ? SELECTED_DOT_R : BASE_DOT_R;
       return base / state.k;
     });
-    dotLayer.selectAll("g.dot-mark circle.core").attr("stroke-width", 1.4 / state.k);
-    dotLayer.selectAll("g.dot-mark").classed("selected", (d) => d.id === state.selectedRecordId);
+    dotLayer
+      .selectAll("g.dot-mark circle.core")
+      .attr("stroke-width", 1.4 / state.k);
+    dotLayer
+      .selectAll("g.dot-mark")
+      .classed("selected", (d) => d.id === state.selectedRecordId);
   }
 
   // ---------- zoom / regions ----------
 
   function applyZoomTransform(transform, immediate) {
     state.k = transform.k;
-    const sel = immediate ? viewport : viewport.transition().duration(650).ease(d3.easeCubicInOut);
+    const sel = immediate
+      ? viewport
+      : viewport.transition().duration(650).ease(d3.easeCubicInOut);
     sel.attr("transform", transform);
-    provinceLayer.selectAll("path.province-path").attr("stroke-width", 1.1 / state.k);
+    provinceLayer
+      .selectAll("path.province-path")
+      .attr("stroke-width", 1.1 / state.k);
     rescaleDots();
     // keep visual stroke width correct through the transition too
     if (!immediate) {
@@ -469,7 +641,9 @@
       requestAnimationFrame(raf);
     }
     function tickStroke() {
-      provinceLayer.selectAll("path.province-path").attr("stroke-width", 1.1 / state.k);
+      provinceLayer
+        .selectAll("path.province-path")
+        .attr("stroke-width", 1.1 / state.k);
     }
   }
 
@@ -493,7 +667,8 @@
     state.selectedProvinceCode = code;
     state.selectedRecordId = null;
 
-    provinceLayer.selectAll("path.province-path")
+    provinceLayer
+      .selectAll("path.province-path")
       .classed("dimmed", (d) => d.properties.code !== code)
       .classed("active-region", (d) => d.properties.code === code);
 
@@ -508,7 +683,10 @@
     if (!state.selectedProvinceCode) return;
     state.selectedProvinceCode = null;
     state.selectedRecordId = null;
-    provinceLayer.selectAll("path.province-path").classed("dimmed", false).classed("active-region", false);
+    provinceLayer
+      .selectAll("path.province-path")
+      .classed("dimmed", false)
+      .classed("active-region", false);
     applyZoomTransform(d3.zoomIdentity, false);
     updateDotsVisibility();
     renderMapHeading();
@@ -517,13 +695,14 @@
   }
 
   function renderMapHeading() {
+    const s = t();
     if (state.selectedProvinceCode) {
       const feature = state.provinceByCode.get(state.selectedProvinceCode);
       els.mapTitle.textContent = provinceLabel(feature);
-      els.mapSub.textContent = "Hover a dot to preview, click to see full details on the right. Press Esc or use National view to zoom back out.";
+      els.mapSub.textContent = s.mapSubRegion;
     } else {
-      els.mapTitle.textContent = "South Korea — filming location density";
-      els.mapSub.textContent = "Hover a province to preview, click to zoom in and see individual locations.";
+      els.mapTitle.textContent = s.mapTitleDefault;
+      els.mapSub.textContent = s.mapSubDefault;
     }
   }
 
@@ -559,7 +738,7 @@
     const unlocatedAll = state.records.filter((r) => !r.provinceCode);
     const unlocatedFiltered = unlocatedAll.filter(passesFilter);
     els.unlocatedNote.textContent = unlocatedFiltered.length
-      ? `${unlocatedFiltered.length} matching records have no recorded location and are not shown on the map.`
+      ? t().unlocatedNote(unlocatedFiltered.length)
       : "";
 
     if (state.selectedProvinceCode) {
@@ -570,22 +749,23 @@
   }
 
   function typeCounts(records) {
-    const map = new Map(TYPES.map((t) => [t.key, 0]));
+    const map = new Map(TYPES.map((ty) => [ty.key, 0]));
     records.forEach((r) => map.set(r.type, (map.get(r.type) || 0) + 1));
     return map;
   }
 
   function renderTypeBreakdown(records) {
+    const s = t();
     const counts = typeCounts(records);
     const max = Math.max(1, ...counts.values());
     els.typeBreakdown.innerHTML = "";
-    TYPES.forEach((t) => {
-      const c = counts.get(t.key) || 0;
+    TYPES.forEach((ty) => {
+      const c = counts.get(ty.key) || 0;
       const row = document.createElement("div");
       row.className = "bar-row";
       row.innerHTML = `
-        <span class="bar-label"><span class="dot" style="background:${cssVar(t.varName)}"></span>${t.label}</span>
-        <span class="bar-track"><span class="bar-fill" style="width:${(c / max) * 100}%;background:${cssVar(t.varName)}"></span></span>
+        <span class="bar-label"><span class="dot" style="background:${cssVar(ty.varName)}"></span>${escapeHtml(s.typeNames[ty.key])}</span>
+        <span class="bar-track"><span class="bar-fill" style="width:${(c / max) * 100}%;background:${cssVar(ty.varName)}"></span></span>
         <span class="bar-count">${c}</span>
       `;
       els.typeBreakdown.appendChild(row);
@@ -600,21 +780,26 @@
   }
 
   function renderNationalStats(records) {
-    els.statsTitle.textContent = "All of South Korea";
+    const s = t();
+    els.statsTitle.textContent = s.statsAllTitle;
     const mapped = records.filter((r) => r.muniCode).length;
-    const provincesRepresented = new Set(records.filter((r) => r.provinceCode).map((r) => r.provinceCode)).size;
-    els.statsSub.textContent = `${records.length} matching record${records.length === 1 ? "" : "s"} · ${mapped} mapped`;
+    const provincesRepresented = new Set(
+      records.filter((r) => r.provinceCode).map((r) => r.provinceCode),
+    ).size;
+    els.statsSub.textContent = s.statsAllSub(records.length, mapped);
 
     els.statTiles.innerHTML = "";
-    els.statTiles.appendChild(statTile(records.length, "Matching records"));
-    els.statTiles.appendChild(statTile(mapped, "Mapped locations"));
-    els.statTiles.appendChild(statTile(provincesRepresented, "Provinces"));
-    els.statTiles.appendChild(statTile(new Set(records.map((r) => r.nameEn)).size, "Distinct titles"));
+    els.statTiles.appendChild(statTile(records.length, s.statMatching));
+    els.statTiles.appendChild(statTile(mapped, s.statMapped));
+    els.statTiles.appendChild(statTile(provincesRepresented, s.statProvinces));
+    els.statTiles.appendChild(
+      statTile(new Set(records.map((r) => r.nameEn)).size, s.statDistinct),
+    );
 
     renderTypeBreakdown(records);
 
     els.detailBlock.hidden = true;
-    els.listHeading.textContent = "Provinces by count";
+    els.listHeading.textContent = s.provincesByCount;
 
     const counts = countByProvince();
     const ranked = state.provinceFeatures
@@ -635,29 +820,38 @@
       loc.className = "rl-loc";
       loc.textContent = String(count);
       li.append(dot, name, loc);
-      li.addEventListener("click", () => zoomToProvince(feature.properties.code));
+      li.addEventListener("click", () =>
+        zoomToProvince(feature.properties.code),
+      );
       els.recordList.appendChild(li);
     });
   }
 
   function renderRegionStats(allFiltered) {
+    const s = t();
     const code = state.selectedProvinceCode;
     const feature = state.provinceByCode.get(code);
     const records = allFiltered.filter((r) => r.provinceCode === code);
 
     els.statsTitle.textContent = provinceLabel(feature);
-    const municipalities = new Set(records.map((r) => r.muniName).filter(Boolean)).size;
-    els.statsSub.textContent = `${records.length} matching record${records.length === 1 ? "" : "s"} in this province`;
+    const municipalities = new Set(
+      records.map((r) => r.muniName).filter(Boolean),
+    ).size;
+    els.statsSub.textContent = s.statsRegionSub(records.length);
 
     els.statTiles.innerHTML = "";
-    els.statTiles.appendChild(statTile(records.length, "Matching records"));
-    els.statTiles.appendChild(statTile(records.filter((r) => r.muniCode).length, "Mapped locations"));
-    els.statTiles.appendChild(statTile(municipalities, "Municipalities"));
-    els.statTiles.appendChild(statTile(new Set(records.map((r) => r.nameEn)).size, "Distinct titles"));
+    els.statTiles.appendChild(statTile(records.length, s.statMatching));
+    els.statTiles.appendChild(
+      statTile(records.filter((r) => r.muniCode).length, s.statMapped),
+    );
+    els.statTiles.appendChild(statTile(municipalities, s.statMunicipalities));
+    els.statTiles.appendChild(
+      statTile(new Set(records.map((r) => r.nameEn)).size, s.statDistinct),
+    );
 
     renderTypeBreakdown(records);
 
-    els.listHeading.textContent = `Locations in ${provinceLabel(feature)}`;
+    els.listHeading.textContent = s.locationsIn(provinceLabel(feature));
     els.recordList.innerHTML = "";
     records
       .slice()
@@ -686,13 +880,12 @@
         els.detailTitle.textContent = displayName(record);
         els.detailList.innerHTML = "";
         const rows = [
-          ["English title", record.nameEn || "—"],
-          ["Korean title", record.nameKr || "—"],
-          ["Type", record.type],
-          ["Province", state.language === "kr" ? record.provinceKr || record.province || "—" : record.province || record.provinceKr || "—"],
-          ["City/County", displayMuniName(record) || record.district || "—"],
-          ["Neighborhood", displayNeighborhood(record) || "—"],
-          ["Record ID", record.id],
+          [s.detailTitleLabel, displayName(record) || s.dash],
+          [s.detailType, s.typeNames[record.type] || record.type],
+          [s.detailProvince, displayProvince(record) || s.dash],
+          [s.detailCity, displayMuniName(record) || record.district || s.dash],
+          [s.detailNeighborhood, displayNeighborhood(record) || s.dash],
+          [s.detailRecordId, record.id],
         ];
         rows.forEach(([dt, dd]) => {
           const dtEl = document.createElement("dt");

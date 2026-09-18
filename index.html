@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,19 +10,19 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">FRAME</span>
-        <span class="brand-sub">Korea Filming Location Explorer</span>
+        <span class="brand-sub" id="brand-sub">Korea Filming Location Explorer</span>
       </div>
       <div class="filters" role="group" aria-label="Filters">
         <div class="filter-group">
-          <span class="filter-label">Type</span>
+          <span class="filter-label" id="label-type">Type</span>
           <div class="chip-row" id="type-filters"></div>
         </div>
         <div class="filter-group">
-          <span class="filter-label">Language</span>
+          <span class="filter-label" id="label-language">Language</span>
           <div class="segmented" id="language-filters" role="radiogroup" aria-label="Language"></div>
         </div>
         <div class="filter-group search-group">
-          <span class="filter-label" for="search-input">Search</span>
+          <span class="filter-label" id="label-search" for="search-input">Search</span>
           <input
             id="search-input"
             type="text"
@@ -45,7 +45,7 @@
               stroke-linejoin="round"
             />
           </svg>
-          National view
+          <span id="reset-view-label">National view</span>
         </button>
       </div>
     </header>
@@ -53,10 +53,9 @@
     <main class="layout">
       <section class="map-pane">
         <div class="map-head">
-          <h1 id="map-title">South Korea — filming location density</h1>
+          <h1 id="map-title">대한민국 — 촬영지 밀도</h1>
           <p id="map-sub" class="muted">
-            Hover a province to preview, click to zoom in and see individual
-            locations.
+            지역에 마우스를 올려 미리보고, 클릭하면 확대되어 개별 촬영지를 볼 수 있습니다.
           </p>
         </div>
         <div class="map-wrap" id="map-wrap">
@@ -73,24 +72,24 @@
 
       <aside class="stats-pane" id="stats-pane">
         <div class="stats-head">
-          <h2 id="stats-title">All of South Korea</h2>
+          <h2 id="stats-title">대한민국 전체</h2>
           <p class="muted" id="stats-sub"></p>
         </div>
 
         <div class="stat-tiles" id="stat-tiles"></div>
 
         <div class="stats-block">
-          <h3>By type</h3>
+          <h3 id="type-breakdown-heading">유형별</h3>
           <div id="type-breakdown" class="bar-list"></div>
         </div>
 
         <div class="stats-block" id="detail-block" hidden>
-          <h3 id="detail-title">Location</h3>
+          <h3 id="detail-title">위치</h3>
           <dl class="detail-list" id="detail-list"></dl>
         </div>
 
         <div class="stats-block">
-          <h3 id="list-heading">Top locations</h3>
+          <h3 id="list-heading">건수별 지역</h3>
           <ul class="record-list" id="record-list"></ul>
         </div>
       </aside>
