@@ -308,8 +308,8 @@ body {
   stroke: var(--surface-1);
   /* stroke-width: 1.4px; */
   transition:
-    r 0.1s ease,
-    filter 0.1s ease;
+    r 0.1s cubic-bezier(0, 0.33, 0.5, 1),
+    filter 0.1s cubic-bezier(0, 0.33, 0.5, 1);
 }
 .dot-mark:hover circle.core,
 .dot-mark.focused circle.core {
