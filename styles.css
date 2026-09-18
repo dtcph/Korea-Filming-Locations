@@ -298,7 +298,7 @@ body {
 }
 .province-path.active-region {
   stroke: var(--text-primary);
-  stroke-width: 1.6px;
+  stroke-width: 1.5px;
 }
 
 .dot-mark {
@@ -306,7 +306,7 @@ body {
 }
 .dot-mark circle.core {
   stroke: var(--surface-1);
-  stroke-width: 1.4px;
+  /* stroke-width: 1.4px; */
   transition:
     r 0.1s ease,
     filter 0.1s ease;
