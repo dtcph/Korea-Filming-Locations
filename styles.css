@@ -153,6 +153,29 @@ body {
 }
 .chip.active .dot { background: #fff; }
 
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.segmented button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+}
+.segmented button:last-child { border-right: none; }
+.segmented button:hover { background: var(--gridline); }
+.segmented button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 #search-input {
   font: inherit;
   font-size: 13px;

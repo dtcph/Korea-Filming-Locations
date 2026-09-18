@@ -9,19 +9,32 @@ nationwide list of province/city/district names. The app therefore covers all
 of South Korea rather than Seoul alone, and geocodes each record by matching
 its province/district text to a real municipality boundary (see `data/` below).
 
+The dataset ships in two parallel CSVs — an English translation and the
+original Korean — that describe the exact same 286 physical locations (same
+ids, same province/district/neighborhood presence for every id). They're
+merged by id rather than treated as separate location sets, so every record
+carries both a `nameEn` and a `nameKr` (plus the Korean search term and
+native-script province/city/neighborhood names) at a single geocoded
+position. A **Language** filter in the header controls which title is shown
+on the map/list/tooltips and which language the search box matches — it never
+duplicates or hides dots, since both languages point at the same place.
+
 ## Included
 
 - `index.html` — page structure
 - `styles.css` — visual design (light/dark aware, tokens from the dataviz palette)
 - `app.js` — D3 map, zoom/drill-down, filtering, tooltips, stats panel
-- `data.csv` — the original offline dataset (CP949-encoded)
-- `data/records.json` — preprocessed records: each row matched to a province +
-  municipality code, plus a derived `type` (Film / TV Drama / Studio & Theme
-  Park) inferred from the title
+- `data.csv` — the English-language source dataset (CP949-encoded)
+- `data_kr.csv` — the Korean-language source dataset (CP949-encoded), same ids
+- `data/records.json` — the two CSVs merged by id: each record carries both
+  language's titles, is matched to a province + municipality code, and gets a
+  derived `type` (Film / TV Drama / Studio & Theme Park) inferred from the
+  English title
 - `geo/provinces-topo.json`, `geo/municipalities-topo.json` — South Korea
   administrative boundaries (from the `southkorea/southkorea-maps` project),
   used both to draw the map and to place each record at its municipality's
-  centroid
+  centroid (their Korean `name` property also supplies the native-script
+  province/city labels)
 
 ## How it works
 
@@ -37,16 +50,20 @@ its province/district text to a real municipality boundary (see `data/` below).
 4. **Back to national view** — the "National view" button in the header, or
    the Esc key.
 
-Filters (type chips + title search) scope the choropleth, the dots, and every
-number in the stats panel at once.
+Filters (type chips, language, title search) scope the choropleth, the dots,
+and every number in the stats panel at once.
 
 ## Regenerating `data/records.json`
 
-If `data.csv` changes, rebuild the matched dataset. The matching logic (with
-a couple of manual aliases for known typos/ambiguous names in the source
-data) lives in a small one-off Python script; re-run it after editing
-`data.csv` to regenerate `data/records.json` from the CSV + the two topology
-files in `geo/`.
+If `data.csv` or `data_kr.csv` changes, rebuild the merged dataset with:
+
+```bash
+python3 data/build_records.py
+```
+
+The matching logic (with a couple of manual aliases for known typos/ambiguous
+names in the source data) lives in that script; it reads both CSVs plus the
+two topology files in `geo/` and writes `data/records.json`.
 
 ## Run locally
 
