@@ -26,7 +26,7 @@
       backTitle: "Back to national view (Esc)",
       mapTitleDefault: "South Korea — filming location density",
       mapSubDefault:
-        "Hover a province to preview, click to zoom in and see individual locations.",
+        "Hover a province to preview. Scroll to zoom and drag to pan - zoom in close enough and individual locations appear, or click a region to jump straight to it.",
       mapSubRegion:
         "Hover a dot to preview, click to see full details on the right. Press Esc or use National view to zoom back out.",
       legendDensity: "Location density",
@@ -73,7 +73,7 @@
       backTitle: "전국 보기로 돌아가기 (Esc)",
       mapTitleDefault: "대한민국 — 촬영지 밀도",
       mapSubDefault:
-        "지역에 마우스를 올려 미리보고, 클릭하면 확대되어 개별 촬영지를 볼 수 있습니다.",
+        "지역에 마우스를 올려 미리보세요. 스크롤로 확대·축소, 드래그로 이동할 수 있고 충분히 확대하면 개별 촬영지가 나타납니다. 지역을 클릭하면 바로 이동합니다.",
       mapSubRegion:
         "점에 마우스를 올리면 미리보기가, 클릭하면 오른쪽에 상세 정보가 표시됩니다. Esc 또는 전국 보기로 돌아갈 수 있습니다.",
       legendDensity: "위치 밀도",
@@ -407,7 +407,7 @@
 
   // ---------- map ----------
 
-  let viewport, provinceLayer, dotLayer;
+  let viewport, provinceLayer, dotLayer, zoomBehavior;
 
   function initMap(preserveSelection) {
     const rect = els.wrap.getBoundingClientRect();
@@ -431,6 +431,47 @@
     provinceLayer = viewport.append("g").attr("class", "province-layer");
     dotLayer = viewport.append("g").attr("class", "dot-layer");
 
+    // Free navigation: wheel zooms, drag pans. Programmatic "zoom to
+    // region" reuses the same behavior (via .transform on a transition)
+    // so a single "zoom" handler drives both interactive and animated moves.
+    zoomBehavior = d3
+      .zoom()
+      .scaleExtent([1, 12])
+      .translateExtent([
+        [0, 0],
+        [width, height],
+      ])
+      .extent([
+        [0, 0],
+        [width, height],
+      ])
+      .on("start", hideTooltip)
+      .on("zoom", (event) => {
+        applyZoomTransform(event.transform);
+        // only an actual user-driven wheel/drag should be able to drop
+        // focus this way - a programmatic click-to-zoom transition also
+        // passes through k=1 at its very first tick (it animates FROM the
+        // old transform) and must never self-cancel because of that.
+        if (
+          event.sourceEvent &&
+          state.selectedProvinceCode &&
+          event.transform.k <= 1.001
+        ) {
+          clearFocusState();
+          updateDotsVisibility();
+        }
+      });
+
+    svg.call(zoomBehavior).on("dblclick.zoom", null);
+
+    // Clicking the empty background (not a province/dot) while a region is
+    // focused exits back to free pan/zoom mode.
+    svg.on("click", (event) => {
+      if (event.target === els.svg && state.selectedProvinceCode) {
+        goNational();
+      }
+    });
+
     drawProvinces();
     drawDots();
     updateChoropleth();
@@ -439,7 +480,7 @@
     if (preserveSelection && state.selectedProvinceCode) {
       zoomToProvince(state.selectedProvinceCode, true);
     } else {
-      applyZoomTransform(d3.zoomIdentity, true);
+      svg.call(zoomBehavior.transform, d3.zoomIdentity);
     }
   }
 
@@ -457,6 +498,17 @@
       })
       .on("mouseleave", hideTooltip)
       .on("click", (event, d) => {
+        // A focused region fills most of the viewport, so "outside" it in
+        // practice means a click that lands on a different (dimmed)
+        // province - that exits back to free pan/zoom mode. Clicking the
+        // focused region itself is a no-op; clicking any province while
+        // unfocused zooms into it, same as before.
+        if (state.selectedProvinceCode) {
+          if (d.properties.code !== state.selectedProvinceCode) {
+            goNational();
+          }
+          return;
+        }
         zoomToProvince(d.properties.code);
       });
   }
@@ -585,19 +637,35 @@
   }
 
   function dotTooltipHTML(r) {
-    const loc = [displayMuniName(r), displayNeighborhood(r)]
-      .filter(Boolean)
-      .join(", ");
+    const s = t();
+    const rows = [
+      [s.detailTitleLabel, displayName(r) || s.dash],
+      [s.detailType, s.typeNames[r.type] || r.type],
+      [s.detailProvince, displayProvince(r) || s.dash],
+      [s.detailCity, displayMuniName(r) || r.district || s.dash],
+      [s.detailNeighborhood, displayNeighborhood(r) || s.dash],
+    ];
+    const rowsHtml = rows
+      .map(([dt, dd]) => `<dt>${escapeHtml(dt)}</dt><dd>${escapeHtml(dd)}</dd>`)
+      .join("");
     return `<div class="tt-title">${escapeHtml(displayName(r))}</div>
-      <div class="tt-value">${escapeHtml(t().typeNames[r.type] || r.type)} · <span class="tt-strong">${escapeHtml(loc)}</span></div>`;
+      <dl class="tt-detail">${rowsHtml}</dl>`;
   }
 
+  // Free-zoom threshold: scroll in this close (without ever clicking a
+  // region) and individual points reveal themselves anyway; zoom back out
+  // past it and they disappear, leaving just the whole-map choropleth.
+  const DOT_REVEAL_K = 2.5;
+
   function updateDotsVisibility() {
+    const freeReveal = !state.selectedProvinceCode && state.k >= DOT_REVEAL_K;
     dotLayer.selectAll("g.dot-mark").style("display", (d) => {
-      // dots only appear once a region is selected, so they never sit on
-      // top of the national choropleth and steal its clicks/hover
-      if (!state.selectedProvinceCode) return "none";
-      if (d.provinceCode !== state.selectedProvinceCode) return "none";
+      if (state.selectedProvinceCode) {
+        // focused on one region: only that region's dots, regardless of k
+        if (d.provinceCode !== state.selectedProvinceCode) return "none";
+        return passesFilter(d) ? null : "none";
+      }
+      if (!freeReveal) return "none";
       return passesFilter(d) ? null : "none";
     });
     rescaleDots();
@@ -619,32 +687,29 @@
 
   // ---------- zoom / regions ----------
 
-  function applyZoomTransform(transform, immediate) {
+  // Single source of truth for the viewport transform - fed both by
+  // interactive wheel/drag input and by programmatic "snap to region" moves
+  // (see zoomToProvince/goNational), so free navigation and click-to-zoom
+  // share one consistent, always-in-sync zoom state.
+  function applyZoomTransform(transform) {
     state.k = transform.k;
-    const sel = immediate
-      ? viewport
-      : viewport.transition().duration(650).ease(d3.easeCubicInOut);
-    sel.attr("transform", transform);
+    viewport.attr("transform", transform);
     provinceLayer
       .selectAll("path.province-path")
       .attr("stroke-width", 1.1 / state.k);
-    rescaleDots();
-    // keep visual stroke width correct through the transition too
-    if (!immediate) {
-      sel.on("start", tickStroke).on("end", tickStroke);
-      const start = performance.now();
-      const raf = () => {
-        if (performance.now() - start > 700) return;
-        rescaleDots();
-        requestAnimationFrame(raf);
-      };
-      requestAnimationFrame(raf);
-    }
-    function tickStroke() {
-      provinceLayer
-        .selectAll("path.province-path")
-        .attr("stroke-width", 1.1 / state.k);
-    }
+    updateDotsVisibility();
+  }
+
+  function clearFocusState() {
+    state.selectedProvinceCode = null;
+    state.selectedRecordId = null;
+    provinceLayer
+      .selectAll("path.province-path")
+      .classed("dimmed", false)
+      .classed("active-region", false);
+    renderMapHeading();
+    renderStats();
+    els.resetView.disabled = true;
   }
 
   function zoomToProvince(code, immediate) {
@@ -672,7 +737,16 @@
       .classed("dimmed", (d) => d.properties.code !== code)
       .classed("active-region", (d) => d.properties.code === code);
 
-    applyZoomTransform(transform, immediate);
+    const svg = d3.select(els.svg);
+    if (immediate) {
+      svg.call(zoomBehavior.transform, transform);
+    } else {
+      svg
+        .transition()
+        .duration(650)
+        .ease(d3.easeCubicInOut)
+        .call(zoomBehavior.transform, transform);
+    }
     updateDotsVisibility();
     renderMapHeading();
     renderStats();
@@ -681,17 +755,13 @@
 
   function goNational() {
     if (!state.selectedProvinceCode) return;
-    state.selectedProvinceCode = null;
-    state.selectedRecordId = null;
-    provinceLayer
-      .selectAll("path.province-path")
-      .classed("dimmed", false)
-      .classed("active-region", false);
-    applyZoomTransform(d3.zoomIdentity, false);
+    clearFocusState();
+    d3.select(els.svg)
+      .transition()
+      .duration(650)
+      .ease(d3.easeCubicInOut)
+      .call(zoomBehavior.transform, d3.zoomIdentity);
     updateDotsVisibility();
-    renderMapHeading();
-    renderStats();
-    els.resetView.disabled = true;
   }
 
   function renderMapHeading() {
@@ -718,8 +788,22 @@
     const wrapRect = els.wrap.getBoundingClientRect();
     els.tooltip.innerHTML = html;
     els.tooltip.hidden = false;
-    els.tooltip.style.left = `${event.clientX - wrapRect.left}px`;
-    els.tooltip.style.top = `${event.clientY - wrapRect.top}px`;
+
+    const x = event.clientX - wrapRect.left;
+    const y = event.clientY - wrapRect.top;
+    const ttRect = els.tooltip.getBoundingClientRect();
+
+    // keep the tooltip within the map pane: flip below the cursor if there
+    // isn't room above it, and clamp sideways so it never clips off-screen
+    const flipBelow = y - ttRect.height - 12 < 0;
+    els.tooltip.style.top = flipBelow ? `${y + 12}px` : `${y}px`;
+    els.tooltip.style.transform = flipBelow
+      ? "translate(-50%, 12px)"
+      : "translate(-50%, calc(-100% - 12px))";
+
+    const halfWidth = ttRect.width / 2;
+    const clampedX = Math.min(Math.max(x, halfWidth + 4), wrapRect.width - halfWidth - 4);
+    els.tooltip.style.left = `${clampedX}px`;
   }
   function hideTooltip() {
     els.tooltip.hidden = true;
