@@ -461,6 +461,12 @@
     fitPadding: [24, 24],
     regionMaxZoom: 11,
     flyDuration: 0.9, // seconds
+    // Zoom feel (tune here). zoomSnap 0 = continuous fractional zoom; the
+    // wheel is handled by smoothWheelZoom() below instead of Leaflet's own.
+    zoomSnap: 0,
+    zoomDelta: 0.5, // +/- buttons, keyboard, double-click
+    wheelPxPerZoomLevel: 200, // px of wheel travel per full zoom level
+    wheelEase: 0.3, // 0-1: share of the remaining zoom applied per frame
   };
 
   const REF_ZOOM = 7; // zoom at which dot-spread offsets are measured in px
@@ -491,9 +497,9 @@
       maxBoundsViscosity: 0.9,
       minZoom: MAP_CONFIG.minZoom,
       maxZoom: MAP_CONFIG.maxZoom,
-      zoomSnap: 0.25,
-      zoomDelta: 0.5,
-      wheelPxPerZoomLevel: 90,
+      zoomSnap: MAP_CONFIG.zoomSnap,
+      zoomDelta: MAP_CONFIG.zoomDelta,
+      scrollWheelZoom: false, // replaced by smoothWheelZoom()
       zoomAnimation: !rm,
       fadeAnimation: !rm,
       markerZoomAnimation: !rm,
@@ -575,6 +581,8 @@
       );
     }
 
+    smoothWheelZoom();
+
     recomputeNationalZoom();
     map.fitBounds(koreaBounds, {
       padding: MAP_CONFIG.fitPadding,
@@ -589,6 +597,72 @@
       attributes: true,
       attributeFilter: ["data-theme"],
     });
+  }
+
+  // Continuous wheel / trackpad / pinch-on-trackpad zoom, anchored on the
+  // cursor. Wheel input accumulates into a target zoom; each animation frame
+  // moves the actual zoom a fraction of the way there (immediately when
+  // reduced motion is requested).
+  function smoothWheelZoom() {
+    const container = map.getContainer();
+    let target = null;
+    let anchorPt = null;
+    let anchorLL = null;
+    let raf = 0;
+
+    const frame = () => {
+      raf = 0;
+      const cur = map.getZoom();
+      const diff = target - cur;
+      const done = reduceMotion() || Math.abs(diff) < 0.005;
+      const next = done ? target : cur + diff * MAP_CONFIG.wheelEase;
+      // keep the lat/lng under the cursor fixed
+      const size = map.getSize();
+      const offset = anchorPt.subtract(size.divideBy(2));
+      const center = map.unproject(
+        map.project(anchorLL, next).subtract(offset),
+        next,
+      );
+      map.setView(center, next, { animate: false });
+      if (done) {
+        target = null;
+        anchorLL = null;
+      } else {
+        raf = requestAnimationFrame(frame);
+      }
+    };
+
+    container.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault(); // no page scroll / browser zoom
+        let px = e.deltaY;
+        if (e.deltaMode === 1) px *= 16; // lines
+        else if (e.deltaMode === 2) px *= 100; // pages
+        if (e.ctrlKey) px *= 8; // trackpad pinch reports tiny deltas
+        if (!px) return;
+
+        map.stop(); // cancel any running fly animation
+        if (target === null) target = map.getZoom();
+        if (!anchorLL) {
+          anchorPt = map.mouseEventToContainerPoint(e);
+          anchorLL = map.containerPointToLatLng(anchorPt);
+        } else {
+          // re-anchor when the cursor moved to keep zoom under the pointer
+          const p = map.mouseEventToContainerPoint(e);
+          if (p.distanceTo(anchorPt) > 4) {
+            anchorPt = p;
+            anchorLL = map.containerPointToLatLng(p);
+          }
+        }
+        target = Math.min(
+          map.getMaxZoom(),
+          Math.max(map.getMinZoom(), target - px / MAP_CONFIG.wheelPxPerZoomLevel),
+        );
+        if (!raf) raf = requestAnimationFrame(frame);
+      },
+      { passive: false },
+    );
   }
 
   function recomputeNationalZoom() {
