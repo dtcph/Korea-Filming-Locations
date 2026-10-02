@@ -75,6 +75,19 @@ a CSS filter to the tile pane only). With `prefers-reduced-motion`, fly
 animations are replaced by instant view changes. The layout stacks the panel
 under the map on narrow screens.
 
+### Zoom configuration
+
+Zoom is continuous (fractional). The knobs are in `MAP_CONFIG` in `app.js`:
+`zoomSnap: 0` (no rounding to whole levels), `zoomDelta: 0.5` (+/- buttons,
+keyboard, double-click), `wheelPxPerZoomLevel: 200` (wheel travel per full zoom
+level; lower = faster) and `wheelEase: 0.3` (how quickly the map catches up
+with the wheel; 1 = instant). Leaflet's built-in wheel zoom is disabled and
+replaced by the small `smoothWheelZoom()` handler, which accumulates wheel,
+trackpad and trackpad-pinch input and zooms around the cursor each frame
+(immediately when `prefers-reduced-motion` is set). Touch pinch uses Leaflet's
+native handler, which is already continuous. Tiles are scaled between integer
+levels while zooming, so they can look slightly soft mid-gesture.
+
 ### Tile provider and OSM attribution
 
 Provider, attribution and zoom limits are in one constant at the top of the map

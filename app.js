@@ -558,7 +558,9 @@
               styleProvince(code);
               hideTooltip();
             },
-            click: () => {
+            click: (e) => {
+              // never let the click reach the map-level "outside" handler
+              L.DomEvent.stopPropagation(e);
               if (code !== state.selectedProvinceCode) selectProvince(code);
             },
           });
@@ -569,6 +571,7 @@
     dotGroup = L.layerGroup().addTo(map);
     createDots();
 
+    map.on("click", onMapClick);
     map.on("movestart", hideTooltip);
     map.on("zoomend", onZoomEnd);
     map.on("moveend", updateResetButton);
@@ -711,6 +714,19 @@
       markProgrammatic(MAP_CONFIG.flyDuration);
       map.flyTo(latlng, zoom, { duration: MAP_CONFIG.flyDuration });
     }
+  }
+
+  // A click that reaches the map itself landed on no province and no dot
+  // (sea, North Korea, Japan, empty basemap). Leaflet fires no click after a
+  // drag, so pans and pinch/scroll zooms never get here. While drilled in it
+  // returns to the national view exactly like Esc / the National view button.
+  // goNational clears the selection synchronously, so a second click during
+  // the fly-out is a no-op and a province click right after simply wins.
+  function onMapClick(e) {
+    if (!state.selectedProvinceCode) return;
+    const target = e.originalEvent && e.originalEvent.target;
+    if (target && target.closest && target.closest(".leaflet-control")) return;
+    goNational();
   }
 
   // Zoom-out rule: if the user manually zooms out to (almost) the national
@@ -859,7 +875,10 @@
             marker.setRadius(dotRadius(r));
             hideTooltip();
           },
-          click: () => selectRecord(r.id),
+          click: (e) => {
+            L.DomEvent.stopPropagation(e);
+            selectRecord(r.id);
+          },
         });
         marker.__record = r;
         dotMarkers.set(r.id, marker);
