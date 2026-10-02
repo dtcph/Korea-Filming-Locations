@@ -26,7 +26,7 @@
       backTitle: "Back to national view (Esc)",
       mapTitleDefault: "South Korea — filming location density",
       mapSubDefault:
-        "Hover a province to preview. Scroll to zoom and drag to pan - zoom in close enough and individual locations appear, or click a region to jump straight to it.",
+        "Hover a province to preview. Scroll to zoom and drag to pan, or click a province to jump to its filming locations.",
       mapSubRegion:
         "Hover a dot to preview, click to see full details on the right. Press Esc or use National view to zoom back out.",
       legendDensity: "Location density",
@@ -61,6 +61,13 @@
       detailNeighborhood: "Neighborhood",
       detailRecordId: "Record ID",
       dash: "—",
+      loading: "Loading map…",
+      errData: "Couldn't load the map data. Check your connection and reload the page.",
+      errLib: "Couldn't load the map libraries (Leaflet / D3). Check your connection and reload the page.",
+      errTiles:
+        "The OpenStreetMap base map couldn't be loaded (blocked or offline). Boundaries and data still work.",
+      mapAria: "Map of South Korea filming locations. Use arrow keys to pan and plus/minus to zoom.",
+      listAria: (name) => `Show ${name}`,
     },
     kr: {
       brandSub: "한국 촬영지 탐색기",
@@ -73,7 +80,7 @@
       backTitle: "전국 보기로 돌아가기 (Esc)",
       mapTitleDefault: "대한민국 — 촬영지 밀도",
       mapSubDefault:
-        "지역에 마우스를 올려 미리보세요. 스크롤로 확대·축소, 드래그로 이동할 수 있고 충분히 확대하면 개별 촬영지가 나타납니다. 지역을 클릭하면 바로 이동합니다.",
+        "지역에 마우스를 올려 미리보세요. 스크롤로 확대·축소, 드래그로 이동할 수 있고, 지역을 클릭하면 해당 지역의 촬영지로 바로 이동합니다.",
       mapSubRegion:
         "점에 마우스를 올리면 미리보기가, 클릭하면 오른쪽에 상세 정보가 표시됩니다. Esc 또는 전국 보기로 돌아갈 수 있습니다.",
       legendDensity: "위치 밀도",
@@ -106,9 +113,15 @@
       detailNeighborhood: "읍·면·동",
       detailRecordId: "기록 ID",
       dash: "—",
+      loading: "지도를 불러오는 중…",
+      errData: "지도 데이터를 불러오지 못했습니다. 연결을 확인하고 새로고침해 주세요.",
+      errLib: "지도 라이브러리(Leaflet / D3)를 불러오지 못했습니다. 연결을 확인하고 새로고침해 주세요.",
+      errTiles:
+        "OpenStreetMap 배경 지도를 불러오지 못했습니다(차단되었거나 오프라인). 경계와 데이터는 계속 사용할 수 있습니다.",
+      mapAria: "대한민국 촬영지 지도. 방향키로 이동하고 +/- 키로 확대·축소할 수 있습니다.",
+      listAria: (name) => `${name} 보기`,
     },
   };
-
   function t() {
     return I18N[state.language];
   }
@@ -122,16 +135,23 @@
     activeTypes: new Set(TYPES.map((t) => t.key)),
     language: "kr",
     search: "",
+    // Single source of truth for drill-down. The viewport never decides
+    // these (except the one zoom-out rule in onZoomEnd).
     selectedProvinceCode: null,
     selectedRecordId: null,
-    projection: null,
-    path: null,
-    k: 1,
+    hoverProvinceCode: null,
+    counts: new Map(),
+    scale: null,
+    dropZoom: 0,
+    programmaticUntil: 0,
   };
 
   const els = {
-    svg: document.getElementById("map-svg"),
     wrap: document.getElementById("map-wrap"),
+    mapDiv: document.getElementById("map"),
+    status: document.getElementById("map-status"),
+    statusText: document.getElementById("map-status-text"),
+    notice: document.getElementById("map-notice"),
     legend: document.getElementById("legend"),
     tooltip: document.getElementById("tooltip"),
     mapTitle: document.getElementById("map-title"),
@@ -158,12 +178,13 @@
     recordList: document.getElementById("record-list"),
   };
 
+  const reducedMotionQuery = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  );
+  const reduceMotion = () => reducedMotionQuery.matches;
+
   function typeColor(key) {
-    return getComputedStyle(document.documentElement)
-      .getPropertyValue(
-        TYPES.find((t) => t.key === key)?.varName || "--type-film",
-      )
-      .trim();
+    return cssVar(TYPES.find((t) => t.key === key)?.varName || "--type-film");
   }
 
   function cssVar(name) {
@@ -230,27 +251,38 @@
   // ---------- boot ----------
 
   applyStaticI18N();
+  showStatus(t().loading);
 
-  Promise.all([
-    d3.json("geo/provinces-topo.json"),
-    d3.json("geo/municipalities-topo.json"),
-    d3.json("data/records.json"),
-  ]).then(([provinceTopo, muniTopo, records]) => {
+  boot();
+
+  async function boot() {
+    if (typeof L === "undefined" || typeof d3 === "undefined" || typeof topojson === "undefined") {
+      showStatus(t().errLib, true);
+      return;
+    }
+    let provinceTopo, muniTopo, records;
+    try {
+      [provinceTopo, muniTopo, records] = await Promise.all([
+        d3.json("geo/provinces-topo.json"),
+        d3.json("geo/municipalities-topo.json"),
+        d3.json("data/records.json"),
+      ]);
+    } catch (err) {
+      console.error(err);
+      showStatus(t().errData, true);
+      return;
+    }
+
     const provinceObj = provinceTopo.objects.skorea_provinces_2018_geo;
     const muniObj = muniTopo.objects.skorea_municipalities_2018_geo;
 
-    state.provinceFeatures = topojson.feature(
-      provinceTopo,
-      provinceObj,
-    ).features;
+    state.provinceFeatures = topojson.feature(provinceTopo, provinceObj).features;
     state.provinceFeatures.forEach((f) =>
       state.provinceByCode.set(f.properties.code, f),
     );
-
-    const muniFeatures = topojson.feature(muniTopo, muniObj).features;
-    muniFeatures.forEach((f) =>
-      state.muniFeatureByCode.set(f.properties.code, f),
-    );
+    topojson
+      .feature(muniTopo, muniObj)
+      .features.forEach((f) => state.muniFeatureByCode.set(f.properties.code, f));
 
     state.records = records;
     state.records.forEach((r) => {
@@ -260,20 +292,27 @@
       state.recordsByProvince.get(r.provinceCode).push(r);
     });
 
+    bindControls();
     buildTypeFilters();
     buildLanguageFilters();
     buildLegend();
     initMap();
+    refreshChoropleth(false);
+    syncDots();
     renderMapHeading();
     renderStats();
+    updateResetButton();
+  }
 
-    window.addEventListener(
-      "resize",
-      debounce(() => {
-        initMap(true);
-      }, 200),
-    );
-  });
+  function showStatus(msg, isError) {
+    els.statusText.textContent = msg;
+    els.status.classList.toggle("error", !!isError);
+    els.status.classList.remove("done");
+  }
+  function hideStatus() {
+    if (!els.status.classList.contains("error"))
+      els.status.classList.add("done");
+  }
 
   function applyStaticI18N() {
     const s = t();
@@ -284,63 +323,58 @@
     els.labelLanguage.textContent = s.languageLabel;
     els.labelSearch.textContent = s.searchLabel;
     els.searchInput.placeholder = s.searchPlaceholder;
+    els.searchInput.setAttribute("aria-label", s.searchLabel);
     els.resetViewLabel.textContent = s.backLabel;
     els.resetView.title = s.backTitle;
+    els.resetView.setAttribute("aria-label", s.backLabel);
     els.typeBreakdownHeading.textContent = s.byType;
-  }
-
-  function debounce(fn, ms) {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
-    };
+    els.mapDiv.setAttribute("aria-label", s.mapAria);
+    if (!els.status.classList.contains("error") && !els.status.classList.contains("done"))
+      els.statusText.textContent = s.loading;
   }
 
   // ---------- filter UI ----------
+
+  function bindControls() {
+    els.searchInput.addEventListener("input", (e) => {
+      state.search = e.target.value.trim().toLowerCase();
+      onFilterChange();
+    });
+    els.resetView.addEventListener("click", () => goNational());
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") goNational();
+    });
+  }
+
+  function paintChip(chip, ty) {
+    const on = state.activeTypes.has(ty.key);
+    chip.classList.toggle("active", on);
+    chip.setAttribute("aria-pressed", String(on));
+    chip.style.setProperty("--chip-color", typeColor(ty.key));
+    chip.style.background = on ? typeColor(ty.key) : "transparent";
+    chip.style.color = on ? "#fff" : "";
+    chip.style.borderColor = on ? "transparent" : "";
+  }
 
   function buildTypeFilters() {
     els.typeFilters.innerHTML = "";
     TYPES.forEach((ty) => {
       const chip = document.createElement("button");
-      chip.className = "chip active";
+      chip.className = "chip";
       chip.type = "button";
-      chip.style.setProperty("--chip-color", cssVar(ty.varName));
-      chip.style.background = cssVar(ty.varName);
-      chip.style.color = "#fff";
-      chip.style.borderColor = "transparent";
       const dot = document.createElement("span");
       dot.className = "dot";
       const label = document.createElement("span");
       label.textContent = t().typeNames[ty.key];
       chip.append(dot, label);
+      paintChip(chip, ty);
       chip.addEventListener("click", () => {
-        if (state.activeTypes.has(ty.key)) {
-          state.activeTypes.delete(ty.key);
-          chip.classList.remove("active");
-          chip.style.background = "transparent";
-          chip.style.color = "";
-          chip.style.borderColor = "";
-        } else {
-          state.activeTypes.add(ty.key);
-          chip.classList.add("active");
-          chip.style.background = cssVar(ty.varName);
-          chip.style.color = "#fff";
-          chip.style.borderColor = "transparent";
-        }
+        if (state.activeTypes.has(ty.key)) state.activeTypes.delete(ty.key);
+        else state.activeTypes.add(ty.key);
+        paintChip(chip, ty);
         onFilterChange();
       });
       els.typeFilters.appendChild(chip);
-    });
-
-    els.searchInput.addEventListener("input", (e) => {
-      state.search = e.target.value.trim().toLowerCase();
-      onFilterChange();
-    });
-
-    els.resetView.addEventListener("click", () => goNational());
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") goNational();
     });
   }
 
@@ -370,8 +404,8 @@
     applyStaticI18N();
     buildTypeFilters();
     buildLegend();
-    onFilterChange();
     renderMapHeading();
+    renderStats();
   }
 
   function buildLegend() {
@@ -393,125 +427,229 @@
     TYPES.forEach((ty) => {
       const row = document.createElement("div");
       row.className = "legend-row";
-      row.innerHTML = `<span class="dot" style="background:${cssVar(ty.varName)}"></span><span>${escapeHtml(s.typeNames[ty.key])}</span>`;
+      row.innerHTML = `<span class="dot" style="background:${typeColor(ty.key)}"></span><span>${escapeHtml(s.typeNames[ty.key])}</span>`;
       typeWrap.appendChild(row);
     });
     els.legend.appendChild(typeWrap);
   }
 
+  // Filters scope everything at once, updating the existing layers in place
+  // (no map re-creation, so zoom/position are never lost).
   function onFilterChange() {
-    updateChoropleth();
-    updateDotsVisibility();
+    refreshChoropleth(true);
+    const sel = state.selectedRecordId
+      ? state.records.find((r) => r.id === state.selectedRecordId)
+      : null;
+    if (sel && !passesFilter(sel)) state.selectedRecordId = null;
+    syncDots();
     renderStats();
   }
 
   // ---------- map ----------
 
-  let viewport, provinceLayer, dotLayer, zoomBehavior;
+  // Everything provider-specific lives here, so swapping tiles later is a
+  // one-place change. Note: tile.openstreetmap.org is for light use only -
+  // see https://operations.osmfoundation.org/policies/tiles/ before using
+  // this at scale; swap in a commercial/self-hosted provider if needed.
+  const MAP_CONFIG = {
+    tileUrl: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+    minZoom: 5,
+    maxZoom: 18, // OSM standard layer supports up to 19; 18 keeps load modest
+    boundsPadding: 0.12, // fraction of Korea's bounds allowed beyond the edge
+    fitPadding: [24, 24],
+    regionMaxZoom: 11,
+    flyDuration: 0.9, // seconds
+  };
 
-  function initMap(preserveSelection) {
-    const rect = els.wrap.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
+  const REF_ZOOM = 7; // zoom at which dot-spread offsets are measured in px
+  const BASE_DOT_R = 4.5;
+  const SELECTED_DOT_R = 6.5;
+  const FILL_OPACITY = 0.4;
+  const ZERO_FILL_OPACITY = 0.14;
 
-    els.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    els.svg.innerHTML = "";
+  let map, canvasRenderer, provinceGroup, dotGroup;
+  let koreaBounds, nationalZoom;
+  const provinceLayers = new Map(); // province code -> L.Polygon layer
+  const dotMarkers = new Map(); // record id -> L.CircleMarker
+  const dotRecords = []; // records that have a municipality
 
-    state.projection = d3.geoMercator().fitExtent(
-      [
-        [16, 16],
-        [width - 16, height - 16],
-      ],
-      { type: "FeatureCollection", features: state.provinceFeatures },
+  function initMap() {
+    const bbox = d3.geoBounds({
+      type: "FeatureCollection",
+      features: state.provinceFeatures,
+    });
+    koreaBounds = L.latLngBounds(
+      [bbox[0][1], bbox[0][0]],
+      [bbox[1][1], bbox[1][0]],
     );
-    state.path = d3.geoPath(state.projection);
 
-    const svg = d3.select(els.svg);
-    viewport = svg.append("g").attr("class", "viewport");
-    provinceLayer = viewport.append("g").attr("class", "province-layer");
-    dotLayer = viewport.append("g").attr("class", "dot-layer");
+    const rm = reduceMotion();
+    map = L.map(els.mapDiv, {
+      maxBounds: koreaBounds.pad(MAP_CONFIG.boundsPadding),
+      maxBoundsViscosity: 0.9,
+      minZoom: MAP_CONFIG.minZoom,
+      maxZoom: MAP_CONFIG.maxZoom,
+      zoomSnap: 0.25,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 90,
+      zoomAnimation: !rm,
+      fadeAnimation: !rm,
+      markerZoomAnimation: !rm,
+      attributionControl: true,
+    });
+    els.mapDiv.setAttribute("role", "region");
+    els.mapDiv.setAttribute("aria-label", t().mapAria);
 
-    // Free navigation: wheel zooms, drag pans. Programmatic "zoom to
-    // region" reuses the same behavior (via .transform on a transition)
-    // so a single "zoom" handler drives both interactive and animated moves.
-    zoomBehavior = d3
-      .zoom()
-      .scaleExtent([1, 12])
-      .translateExtent([
-        [0, 0],
-        [width, height],
-      ])
-      .extent([
-        [0, 0],
-        [width, height],
-      ])
-      .on("start", hideTooltip)
-      .on("zoom", (event) => {
-        applyZoomTransform(event.transform);
-        // only an actual user-driven wheel/drag should be able to drop
-        // focus this way - a programmatic click-to-zoom transition also
-        // passes through k=1 at its very first tick (it animates FROM the
-        // old transform) and must never self-cancel because of that.
-        if (
-          event.sourceEvent &&
-          state.selectedProvinceCode &&
-          event.transform.k <= 1.001
-        ) {
-          clearFocusState();
-          updateDotsVisibility();
-        }
-      });
+    // Tiles: no prefetching (keepBuffer default, no custom preloading).
+    const tiles = L.tileLayer(MAP_CONFIG.tileUrl, {
+      attribution: MAP_CONFIG.attribution,
+      maxZoom: MAP_CONFIG.maxZoom,
+      maxNativeZoom: MAP_CONFIG.maxZoom,
+      crossOrigin: false,
+    }).addTo(map);
 
-    svg.call(zoomBehavior).on("dblclick.zoom", null);
-
-    // Clicking the empty background (not a province/dot) while a region is
-    // focused exits back to free pan/zoom mode.
-    svg.on("click", (event) => {
-      if (event.target === els.svg && state.selectedProvinceCode) {
-        goNational();
+    let tileOk = 0;
+    let tileErr = 0;
+    tiles.on("tileload", () => {
+      tileOk++;
+      els.notice.hidden = true;
+    });
+    tiles.on("tileerror", () => {
+      tileErr++;
+      if (tileOk === 0 && tileErr >= 3) {
+        els.notice.textContent = t().errTiles;
+        els.notice.hidden = false;
+        hideStatus();
       }
     });
+    tiles.once("load", hideStatus);
+    setTimeout(hideStatus, 6000);
 
-    drawProvinces();
-    drawDots();
-    updateChoropleth();
-    updateDotsVisibility();
+    // One shared canvas renderer for polygons and dots: SVG polygons under a
+    // separate canvas layer would never receive mouse events.
+    canvasRenderer = L.canvas({ padding: 0.3, tolerance: 4 });
 
-    if (preserveSelection && state.selectedProvinceCode) {
-      zoomToProvince(state.selectedProvinceCode, true);
-    } else {
-      svg.call(zoomBehavior.transform, d3.zoomIdentity);
+    provinceGroup = L.geoJSON(
+      { type: "FeatureCollection", features: state.provinceFeatures },
+      {
+        renderer: canvasRenderer,
+        bubblingMouseEvents: false,
+        style: () => ({ weight: 1, fillOpacity: 0 }),
+        onEachFeature: (feature, layer) => {
+          const code = feature.properties.code;
+          provinceLayers.set(code, layer);
+          layer.on({
+            mouseover: () => {
+              state.hoverProvinceCode = code;
+              styleProvince(code);
+            },
+            mousemove: (e) =>
+              showTooltip(e.containerPoint, provinceTooltipHTML(feature)),
+            mouseout: () => {
+              state.hoverProvinceCode = null;
+              styleProvince(code);
+              hideTooltip();
+            },
+            click: () => {
+              if (code !== state.selectedProvinceCode) selectProvince(code);
+            },
+          });
+        },
+      },
+    ).addTo(map);
+
+    dotGroup = L.layerGroup().addTo(map);
+    createDots();
+
+    map.on("movestart", hideTooltip);
+    map.on("zoomend", onZoomEnd);
+    map.on("moveend", updateResetButton);
+    map.on("resize", onMapResize);
+
+    // Keep Leaflet in sync with layout changes (mobile stacking, legend...).
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => map.invalidateSize({ animate: false })).observe(
+        els.wrap,
+      );
+    }
+
+    recomputeNationalZoom();
+    map.fitBounds(koreaBounds, {
+      padding: MAP_CONFIG.fitPadding,
+      animate: false,
+    });
+
+    // follow the OS/theme setting
+    window
+      .matchMedia("(prefers-color-scheme: dark)")
+      .addEventListener("change", refreshTheme);
+    new MutationObserver(refreshTheme).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+  }
+
+  function recomputeNationalZoom() {
+    nationalZoom = map.getBoundsZoom(koreaBounds, false, L.point(48, 48));
+    // a half-level of slack below the national fit, so users can't wander
+    // off the peninsula but the whole country is always reachable
+    map.setMinZoom(Math.max(MAP_CONFIG.minZoom, nationalZoom - 0.5));
+  }
+
+  function onMapResize() {
+    const nearNational = Math.abs(map.getZoom() - nationalZoom) < 0.3;
+    recomputeNationalZoom();
+    if (!state.selectedProvinceCode && nearNational) {
+      map.fitBounds(koreaBounds, {
+        padding: MAP_CONFIG.fitPadding,
+        animate: false,
+      });
     }
   }
 
-  function drawProvinces() {
-    provinceLayer
-      .selectAll("path.province-path")
-      .data(state.provinceFeatures, (d) => d.properties.code)
-      .join("path")
-      .attr("class", "province-path")
-      .attr("d", state.path)
-      .attr("vector-effect", "non-scaling-stroke")
-      .on("mousemove", (event, d) => {
-        if (state.selectedProvinceCode) return;
-        showTooltip(event, provinceTooltipHTML(d));
-      })
-      .on("mouseleave", hideTooltip)
-      .on("click", (event, d) => {
-        // A focused region fills most of the viewport, so "outside" it in
-        // practice means a click that lands on a different (dimmed)
-        // province - that exits back to free pan/zoom mode. Clicking the
-        // focused region itself is a no-op; clicking any province while
-        // unfocused zooms into it, same as before.
-        if (state.selectedProvinceCode) {
-          if (d.properties.code !== state.selectedProvinceCode) {
-            goNational();
-          }
-          return;
-        }
-        zoomToProvince(d.properties.code);
-      });
+  // Moves driven by the app (not the user) are marked so the zoom-out rule
+  // below ignores the intermediate zoom levels of a fly animation.
+  function markProgrammatic(seconds) {
+    state.programmaticUntil = performance.now() + seconds * 1000 + 400;
   }
+
+  function moveToBounds(bounds, extra) {
+    const opts = Object.assign(
+      { padding: MAP_CONFIG.fitPadding, maxZoom: MAP_CONFIG.regionMaxZoom },
+      extra,
+    );
+    if (reduceMotion()) {
+      markProgrammatic(0);
+      map.fitBounds(bounds, Object.assign(opts, { animate: false }));
+    } else {
+      markProgrammatic(MAP_CONFIG.flyDuration);
+      map.flyToBounds(bounds, Object.assign(opts, { duration: MAP_CONFIG.flyDuration }));
+    }
+  }
+
+  function moveToLatLng(latlng, zoom) {
+    if (reduceMotion()) {
+      markProgrammatic(0);
+      map.setView(latlng, zoom, { animate: false });
+    } else {
+      markProgrammatic(MAP_CONFIG.flyDuration);
+      map.flyTo(latlng, zoom, { duration: MAP_CONFIG.flyDuration });
+    }
+  }
+
+  // Zoom-out rule: if the user manually zooms out to (almost) the national
+  // view while a province is selected, the selection is released - there's
+  // no province "in focus" any more. Zooming in/panning never changes it.
+  function onZoomEnd() {
+    updateResetButton();
+    if (!state.selectedProvinceCode) return;
+    if (performance.now() < state.programmaticUntil) return;
+    if (map.getZoom() <= state.dropZoom) clearSelection();
+  }
+
+  // ---------- choropleth ----------
 
   function provinceLabel(feature) {
     return isKr() ? feature.properties.name : feature.properties.name_eng;
@@ -536,104 +674,157 @@
     return counts;
   }
 
-  function updateChoropleth() {
-    const counts = countByProvince();
-    const max = d3.max(Array.from(counts.values())) || 1;
-    const scale = d3
-      .scaleLinear()
-      .domain([0, max])
-      .range([cssVar("--seq-100"), cssVar("--seq-700")])
-      .interpolate(d3.interpolateRgb);
+  function fillTarget(code) {
+    if (code === state.selectedProvinceCode) return 0; // fade out the fill
+    const c = state.counts.get(code) || 0;
+    const base = c === 0 ? ZERO_FILL_OPACITY : FILL_OPACITY;
+    return code === state.hoverProvinceCode ? Math.min(0.8, base + 0.18) : base;
+  }
 
-    provinceLayer.selectAll("path.province-path").attr("fill", (d) => {
-      const c = counts.get(d.properties.code) || 0;
-      return c === 0 ? cssVar("--gridline") : scale(c);
+  // Everything except the (animated) fill opacity.
+  function styleProvince(code, includeFill = true) {
+    const layer = provinceLayers.get(code);
+    if (!layer) return;
+    const selected = code === state.selectedProvinceCode;
+    const hovered = code === state.hoverProvinceCode;
+    const c = state.counts.get(code) || 0;
+    const style = {
+      color: selected ? cssVar("--text-primary") : cssVar("--text-secondary"),
+      weight: selected ? 2.6 : hovered ? 2.2 : 1,
+      opacity: selected ? 1 : 0.8,
+      fillColor: c === 0 ? cssVar("--baseline") : state.scale(c),
+    };
+    if (includeFill) style.fillOpacity = fillTarget(code);
+    layer.setStyle(style);
+  }
+
+  let fadeRaf = 0;
+  // Recompute counts + colour scale and restyle in place; the fill opacity
+  // of provinces whose target changed (selection/filter) eases over 400ms.
+  function refreshChoropleth(animate) {
+    state.counts = countByProvince();
+    const max = d3.max(Array.from(state.counts.values())) || 1;
+    state.scale = d3
+      .scaleLinear()
+      .domain([0, max / 2, max])
+      .range([cssVar("--ramp-lo"), cssVar("--ramp-mid"), cssVar("--ramp-hi")])
+      .interpolate(d3.interpolateRgb)
+      .clamp(true);
+
+    const from = new Map();
+    provinceLayers.forEach((layer, code) => {
+      from.set(code, layer.options.fillOpacity ?? 0);
+      styleProvince(code, false);
     });
+
+    cancelAnimationFrame(fadeRaf);
+    if (!animate || reduceMotion()) {
+      provinceLayers.forEach((layer, code) =>
+        layer.setStyle({ fillOpacity: fillTarget(code) }),
+      );
+      return;
+    }
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / 400);
+      const e = d3.easeCubicOut(p);
+      provinceLayers.forEach((layer, code) => {
+        const a = from.get(code);
+        layer.setStyle({ fillOpacity: a + (fillTarget(code) - a) * e });
+      });
+      if (p < 1) fadeRaf = requestAnimationFrame(step);
+    };
+    fadeRaf = requestAnimationFrame(step);
   }
 
   // ---------- dots ----------
 
-  function dotBasePosition(record) {
-    const feature = state.muniFeatureByCode.get(record.muniCode);
-    if (!feature) return null;
-    const centroid = state.path.centroid(feature);
-    if (!centroid || Number.isNaN(centroid[0])) return null;
-    return centroid;
-  }
-
-  function groupJitter(records) {
-    // group records sharing the same municipality centroid and spread them
-    // in a small deterministic spiral so overlapping points stay legible.
+  // Records sharing a municipality are spread on a small deterministic
+  // spiral (same constants as V1). Offsets are measured in px at REF_ZOOM
+  // and converted through the map's own CRS, so they scale with zoom just
+  // like V1's offsets scaled with the zoom transform.
+  function createDots() {
+    const geoRecords = state.records.filter((r) => r.muniCode);
     const groups = new Map();
-    records.forEach((r) => {
-      const key = r.muniCode;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(r);
+    geoRecords.forEach((r) => {
+      if (!groups.has(r.muniCode)) groups.set(r.muniCode, []);
+      groups.get(r.muniCode).push(r);
     });
-    const offsets = new Map();
-    groups.forEach((group) => {
+    const centroids = new Map();
+    groups.forEach((group, code) => {
+      const f = state.muniFeatureByCode.get(code);
+      if (!f) return;
+      const [lng, lat] = d3.geoCentroid(f);
+      if (Number.isNaN(lng)) return;
+      centroids.set(code, L.latLng(lat, lng));
+    });
+
+    groups.forEach((group, code) => {
+      const center = centroids.get(code);
+      if (!center) return;
+      const basePt = map.project(center, REF_ZOOM);
       group.forEach((r, i) => {
-        if (group.length === 1) {
-          offsets.set(r.id, [0, 0]);
-        } else {
+        let off = [0, 0];
+        if (group.length > 1) {
           const radius = 5 + 3.2 * Math.sqrt(i);
           const angle = i * 137.508 * (Math.PI / 180);
-          offsets.set(r.id, [
-            radius * Math.cos(angle),
-            radius * Math.sin(angle),
-          ]);
+          off = [radius * Math.cos(angle), radius * Math.sin(angle)];
         }
+        const ll = map.unproject(basePt.add(off), REF_ZOOM);
+        const marker = L.circleMarker(ll, {
+          renderer: canvasRenderer,
+          radius: BASE_DOT_R,
+          bubblingMouseEvents: false,
+        });
+        marker.on({
+          mouseover: () => {
+            marker.setRadius(dotRadius(r) + 1.5);
+          },
+          mousemove: (e) => showTooltip(e.containerPoint, dotTooltipHTML(r)),
+          mouseout: () => {
+            marker.setRadius(dotRadius(r));
+            hideTooltip();
+          },
+          click: () => selectRecord(r.id),
+        });
+        marker.__record = r;
+        dotMarkers.set(r.id, marker);
+        dotRecords.push(r);
+        styleDot(r);
       });
     });
-    return offsets;
   }
 
-  const BASE_DOT_R = 4.5;
-  const SELECTED_DOT_R = 6.5;
+  function dotRadius(r) {
+    return r.id === state.selectedRecordId ? SELECTED_DOT_R : BASE_DOT_R;
+  }
 
-  function drawDots() {
-    const geoRecords = state.records.filter((r) => r.muniCode);
-    const offsets = groupJitter(geoRecords);
-
-    const groups = dotLayer
-      .selectAll("g.dot-mark")
-      .data(geoRecords, (d) => d.id)
-      .join("g")
-      .attr("class", "dot-mark")
-      .attr("tabindex", 0)
-      .attr("transform", (d) => {
-        const pos = dotBasePosition(d);
-        if (!pos) return "translate(-9999,-9999)";
-        const off = offsets.get(d.id) || [0, 0];
-        d.__x = pos[0] + off[0];
-        d.__y = pos[1] + off[1];
-        return `translate(${d.__x},${d.__y})`;
-      });
-
-    groups.each(function (d) {
-      const g = d3.select(this);
-      g.selectAll("*").remove();
-      g.append("circle")
-        .attr("class", "core")
-        .attr("r", BASE_DOT_R)
-        .attr("fill", typeColor(d.type));
+  function styleDot(r) {
+    const marker = dotMarkers.get(r.id);
+    if (!marker) return;
+    const selected = r.id === state.selectedRecordId;
+    marker.setStyle({
+      fillColor: typeColor(r.type),
+      fillOpacity: 1,
+      color: selected ? cssVar("--text-primary") : "#fff",
+      weight: selected ? 2.6 : 1.4,
+      opacity: 1,
     });
+    marker.setRadius(dotRadius(r));
+    if (selected) marker.bringToFront();
+  }
 
-    groups
-      .on("mousemove", (event, d) => {
-        showTooltip(event, dotTooltipHTML(d));
-        d3.select(event.currentTarget).classed("focused", true);
-      })
-      .on("mouseleave", (event) => {
-        hideTooltip();
-        d3.select(event.currentTarget).classed("focused", false);
-      })
-      .on("focus", (event, d) => showTooltip(event, dotTooltipHTML(d)))
-      .on("blur", hideTooltip)
-      .on("click", (event, d) => {
-        event.stopPropagation();
-        selectRecord(d.id);
-      });
+  // Dots follow the selected province + filters, never the viewport.
+  function syncDots() {
+    const sel = state.selectedProvinceCode;
+    dotRecords.forEach((r) => {
+      const marker = dotMarkers.get(r.id);
+      const show = !!sel && r.provinceCode === sel && passesFilter(r);
+      const has = dotGroup.hasLayer(marker);
+      if (show && !has) dotGroup.addLayer(marker);
+      else if (!show && has) dotGroup.removeLayer(marker);
+      styleDot(r);
+    });
   }
 
   function dotTooltipHTML(r) {
@@ -652,116 +843,84 @@
       <dl class="tt-detail">${rowsHtml}</dl>`;
   }
 
-  // Free-zoom threshold: scroll in this close (without ever clicking a
-  // region) and individual points reveal themselves anyway; zoom back out
-  // past it and they disappear, leaving just the whole-map choropleth.
-  const DOT_REVEAL_K = 2.5;
+  // ---------- selection / navigation ----------
 
-  function updateDotsVisibility() {
-    const freeReveal = !state.selectedProvinceCode && state.k >= DOT_REVEAL_K;
-    dotLayer.selectAll("g.dot-mark").style("display", (d) => {
-      if (state.selectedProvinceCode) {
-        // focused on one region: only that region's dots, regardless of k
-        if (d.provinceCode !== state.selectedProvinceCode) return "none";
-        return passesFilter(d) ? null : "none";
-      }
-      if (!freeReveal) return "none";
-      return passesFilter(d) ? null : "none";
-    });
-    rescaleDots();
-  }
-
-  function rescaleDots() {
-    dotLayer.selectAll("g.dot-mark circle.core").attr("r", (d) => {
-      const base =
-        d.id === state.selectedRecordId ? SELECTED_DOT_R : BASE_DOT_R;
-      return base / state.k;
-    });
-    dotLayer
-      .selectAll("g.dot-mark circle.core")
-      .attr("stroke-width", 1.4 / state.k);
-    dotLayer
-      .selectAll("g.dot-mark")
-      .classed("selected", (d) => d.id === state.selectedRecordId);
-  }
-
-  // ---------- zoom / regions ----------
-
-  // Single source of truth for the viewport transform - fed both by
-  // interactive wheel/drag input and by programmatic "snap to region" moves
-  // (see zoomToProvince/goNational), so free navigation and click-to-zoom
-  // share one consistent, always-in-sync zoom state.
-  function applyZoomTransform(transform) {
-    state.k = transform.k;
-    viewport.attr("transform", transform);
-    provinceLayer
-      .selectAll("path.province-path")
-      .attr("stroke-width", 1.1 / state.k);
-    updateDotsVisibility();
-  }
-
-  function clearFocusState() {
-    state.selectedProvinceCode = null;
-    state.selectedRecordId = null;
-    provinceLayer
-      .selectAll("path.province-path")
-      .classed("dimmed", false)
-      .classed("active-region", false);
-    renderMapHeading();
-    renderStats();
-    els.resetView.disabled = true;
-  }
-
-  function zoomToProvince(code, immediate) {
+  // Clicking a province while already drilled into another switches
+  // straight to the new one (fly + restyle); nothing goes via national view.
+  function selectProvince(code) {
     const feature = state.provinceByCode.get(code);
-    if (!feature) return;
-    const rect = els.wrap.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    const [[x0, y0], [x1, y1]] = state.path.bounds(feature);
-    const dx = x1 - x0;
-    const dy = y1 - y0;
-    const cx = (x0 + x1) / 2;
-    const cy = (y0 + y1) / 2;
-    const padding = 0.82;
-    const k = Math.min(8, padding * Math.min(width / dx, height / dy));
-    const tx = width / 2 - k * cx;
-    const ty = height / 2 - k * cy;
-    const transform = d3.zoomIdentity.translate(tx, ty).scale(k);
+    const layer = provinceLayers.get(code);
+    if (!feature || !layer) return;
+    const bounds = layer.getBounds();
 
     state.selectedProvinceCode = code;
     state.selectedRecordId = null;
+    state.hoverProvinceCode = null;
+    hideTooltip();
 
-    provinceLayer
-      .selectAll("path.province-path")
-      .classed("dimmed", (d) => d.properties.code !== code)
-      .classed("active-region", (d) => d.properties.code === code);
+    // Release the selection if the user later zooms back out to near the
+    // national view (never above half a level below the province fit).
+    const fitZoom = map.getBoundsZoom(
+      bounds,
+      false,
+      L.point(MAP_CONFIG.fitPadding[0] * 2, MAP_CONFIG.fitPadding[1] * 2),
+    );
+    state.dropZoom = Math.min(nationalZoom + 0.5, fitZoom - 0.75);
 
-    const svg = d3.select(els.svg);
-    if (immediate) {
-      svg.call(zoomBehavior.transform, transform);
-    } else {
-      svg
-        .transition()
-        .duration(650)
-        .ease(d3.easeCubicInOut)
-        .call(zoomBehavior.transform, transform);
-    }
-    updateDotsVisibility();
+    refreshChoropleth(true);
+    syncDots();
     renderMapHeading();
     renderStats();
-    els.resetView.disabled = false;
+    updateResetButton();
+    moveToBounds(bounds);
+  }
+
+  function clearSelection() {
+    if (!state.selectedProvinceCode && !state.selectedRecordId) return;
+    state.selectedProvinceCode = null;
+    state.selectedRecordId = null;
+    refreshChoropleth(true);
+    syncDots();
+    renderMapHeading();
+    renderStats();
+    updateResetButton();
   }
 
   function goNational() {
-    if (!state.selectedProvinceCode) return;
-    clearFocusState();
-    d3.select(els.svg)
-      .transition()
-      .duration(650)
-      .ease(d3.easeCubicInOut)
-      .call(zoomBehavior.transform, d3.zoomIdentity);
-    updateDotsVisibility();
+    if (!map) return;
+    clearSelection();
+    hideTooltip();
+    moveToBounds(koreaBounds, { maxZoom: MAP_CONFIG.maxZoom });
+  }
+
+  function selectRecord(id, opts) {
+    const r = state.records.find((x) => x.id === id);
+    if (!r) return;
+    const prev = state.selectedRecordId;
+    state.selectedRecordId = id;
+    if (prev && dotMarkers.has(prev)) styleDot(dotMarkers.get(prev).__record);
+    styleDot(r);
+    renderStats();
+    const li = els.recordList.querySelector("li.selected");
+    if (li) li.scrollIntoView({ block: "nearest" });
+    if (opts && opts.pan) {
+      const marker = dotMarkers.get(id);
+      if (marker) moveToLatLng(marker.getLatLng(), Math.max(map.getZoom(), 11));
+    }
+  }
+
+  function updateResetButton() {
+    if (!map) return;
+    const away = Math.abs(map.getZoom() - nationalZoom) > 0.3;
+    els.resetView.disabled = !(state.selectedProvinceCode || away);
+  }
+
+  function refreshTheme() {
+    buildTypeFilters();
+    buildLegend();
+    refreshChoropleth(false);
+    dotRecords.forEach(styleDot);
+    renderStats();
   }
 
   function renderMapHeading() {
@@ -776,33 +935,26 @@
     }
   }
 
-  function selectRecord(id) {
-    state.selectedRecordId = id;
-    rescaleDots();
-    renderStats();
-  }
-
   // ---------- tooltip ----------
 
-  function showTooltip(event, html) {
-    const wrapRect = els.wrap.getBoundingClientRect();
+  // (x, y) are container pixels, which equal map-wrap pixels (the map fills it)
+  function showTooltip(pt, html) {
+    const wrapW = els.wrap.clientWidth;
     els.tooltip.innerHTML = html;
     els.tooltip.hidden = false;
 
-    const x = event.clientX - wrapRect.left;
-    const y = event.clientY - wrapRect.top;
     const ttRect = els.tooltip.getBoundingClientRect();
-
-    // keep the tooltip within the map pane: flip below the cursor if there
-    // isn't room above it, and clamp sideways so it never clips off-screen
-    const flipBelow = y - ttRect.height - 12 < 0;
-    els.tooltip.style.top = flipBelow ? `${y + 12}px` : `${y}px`;
+    const flipBelow = pt.y - ttRect.height - 12 < 0;
+    els.tooltip.style.top = flipBelow ? `${pt.y + 12}px` : `${pt.y}px`;
     els.tooltip.style.transform = flipBelow
       ? "translate(-50%, 12px)"
       : "translate(-50%, calc(-100% - 12px))";
 
     const halfWidth = ttRect.width / 2;
-    const clampedX = Math.min(Math.max(x, halfWidth + 4), wrapRect.width - halfWidth - 4);
+    const clampedX = Math.min(
+      Math.max(pt.x, halfWidth + 4),
+      wrapW - halfWidth - 4,
+    );
     els.tooltip.style.left = `${clampedX}px`;
   }
   function hideTooltip() {
@@ -848,8 +1000,8 @@
       const row = document.createElement("div");
       row.className = "bar-row";
       row.innerHTML = `
-        <span class="bar-label"><span class="dot" style="background:${cssVar(ty.varName)}"></span>${escapeHtml(s.typeNames[ty.key])}</span>
-        <span class="bar-track"><span class="bar-fill" style="width:${(c / max) * 100}%;background:${cssVar(ty.varName)}"></span></span>
+        <span class="bar-label"><span class="dot" style="background:${typeColor(ty.key)}"></span>${escapeHtml(s.typeNames[ty.key])}</span>
+        <span class="bar-track"><span class="bar-fill" style="width:${(c / max) * 100}%;background:${typeColor(ty.key)}"></span></span>
         <span class="bar-count">${c}</span>
       `;
       els.typeBreakdown.appendChild(row);
@@ -861,6 +1013,20 @@
     div.className = "stat-tile";
     div.innerHTML = `<div class="value">${value}</div><div class="label">${label}</div>`;
     return div;
+  }
+
+  // keyboard-operable list row
+  function makeRow(li, label, onActivate) {
+    li.tabIndex = 0;
+    li.setAttribute("role", "button");
+    li.setAttribute("aria-label", label);
+    li.addEventListener("click", onActivate);
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActivate();
+      }
+    });
   }
 
   function renderNationalStats(records) {
@@ -904,8 +1070,8 @@
       loc.className = "rl-loc";
       loc.textContent = String(count);
       li.append(dot, name, loc);
-      li.addEventListener("click", () =>
-        zoomToProvince(feature.properties.code),
+      makeRow(li, `${s.listAria(provinceLabel(feature))} (${count})`, () =>
+        selectProvince(feature.properties.code),
       );
       els.recordList.appendChild(li);
     });
@@ -942,7 +1108,9 @@
       .sort((a, b) => displayName(a).localeCompare(displayName(b)))
       .forEach((r) => {
         const li = document.createElement("li");
-        li.classList.toggle("selected", r.id === state.selectedRecordId);
+        const isSel = r.id === state.selectedRecordId;
+        li.classList.toggle("selected", isSel);
+        li.setAttribute("aria-pressed", String(isSel));
         const dot = document.createElement("span");
         dot.className = "dot";
         dot.style.background = typeColor(r.type);
@@ -953,7 +1121,9 @@
         loc.className = "rl-loc";
         loc.textContent = displayMuniName(r) || "—";
         li.append(dot, name, loc);
-        li.addEventListener("click", () => selectRecord(r.id));
+        makeRow(li, `${displayName(r)}, ${displayMuniName(r) || ""}`, () =>
+          selectRecord(r.id, { pan: true }),
+        );
         els.recordList.appendChild(li);
       });
 

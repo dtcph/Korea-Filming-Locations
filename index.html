@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FRAME — Korea Filming Locations</title>
+    <!-- OSM's tile policy needs a Referer; keep the origin-only default explicit -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -70,11 +78,12 @@
           </p>
         </div>
         <div class="map-wrap" id="map-wrap">
-          <svg
-            id="map-svg"
-            role="img"
-            aria-label="Map of South Korea filming locations"
-          ></svg>
+          <div id="map" aria-label="Map of South Korea filming locations"></div>
+          <div class="map-status" id="map-status" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="map-status-text">Loading map…</span>
+          </div>
+          <div class="map-notice" id="map-notice" role="alert" hidden></div>
           <div class="legend" id="legend"></div>
           <div class="tooltip" id="tooltip" hidden></div>
         </div>
@@ -82,7 +91,7 @@
       </section>
 
       <aside class="stats-pane" id="stats-pane">
-        <div class="stats-head">
+        <div class="stats-head" aria-live="polite">
           <h2 id="stats-title">대한민국 전체</h2>
           <p class="muted" id="stats-sub"></p>
         </div>
@@ -106,6 +115,11 @@
       </aside>
     </main>
 
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
     <script src="app.js"></script>
